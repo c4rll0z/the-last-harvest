@@ -1,7 +1,7 @@
 /*
   ==========================================
   THE LAST HARVEST
-  Arduino MEGA 2560 - Master Controller (V4.1 game integration)
+  Arduino MEGA 2560 - Master Controller (V4.2 motion-sensor game integration)
   ==========================================
 
   Inputs                       Outputs
@@ -9,18 +9,18 @@
   - D23 cool button            - D44 fan enable (PWM), D45/D46 fan direction
   - A0  light sensor           - LCD1602: RS 30, E 31, D4-D7 32-35
   - A1  water sensor
-  - D48 sound sensor (DO)
+  - D41 PIR motion sensor (HC-SR501)
 
   Serial: 9600 baud. The board sends one JSON object per line:
     {"type":"temperature","value":24}
     {"type":"dayNight","value":"night"}
     {"type":"water","value":300}
-    {"type":"clap","value":true}      (only while crows are in the field)
+    {"type":"motion","value":true}      (only while crows are in the field)
     {"type":"fan","value":"on"}       (acknowledges fan changes)
 
   The game sends one plain-text command per line. See handleCommand().
   If the game goes quiet for 4 seconds (cable pulled, tab closed), the fan,
-  footsteps, and microphone switch off automatically.
+  footsteps, and motion processing switch off automatically.
 */
 
 #include <LiquidCrystal.h>
@@ -57,25 +57,10 @@ const int waterSensor = A1;
 unsigned long lastWaterReading = 0;
 const unsigned long waterInterval = 500;
 
-// ===== SOUND SENSOR =====
-const int soundPin = 48;
-
-int soundIdleState = HIGH;
-bool soundArmed = false;
-
-// The game turns the microphone on only while crows are landing.
-bool micListening = false;
-
-unsigned long lastClapTime = 0;
-unsigned long soundQuietSince = 0;
-
-const unsigned long clapCooldown = 800;
-
-// The buzzer sits next to the microphone. Ignore "claps" while an event
-// sound is playing and for a moment afterward so the buzzer can't scare
-// the crows by itself. Footsteps pause while the microphone listens.
-const unsigned long buzzerEchoIgnore = 150;
-unsigned long eventSoundEndedAt = 0;
+// ===== PIR MOTION SENSOR (from the supplied The_Last_Harvest-4 sketch) =====
+const int motionPin = 41;
+bool previousMotion = false;
+bool motionEnabled = false;
 
 // ===== PASSIVE BUZZER =====
 const int buzzerPin = 50;
@@ -131,7 +116,7 @@ bool commandOverflow = false;
 unsigned long lastCommandAt = 0;
 bool gameLinked = false;
 const unsigned long gameTimeout = 4000;
-enum HardwareTest { TEST_NONE, TEST_FAN, TEST_MIC, TEST_LCD };
+enum HardwareTest { TEST_NONE, TEST_FAN, TEST_MOTION, TEST_LCD };
 HardwareTest hardwareTest = TEST_NONE;
 unsigned long testStartedAt = 0;
 unsigned long testDuration = 0;
@@ -259,7 +244,6 @@ void stopSound() {
   activeSoundLength = 0;
   activeSoundIndex = 0;
   noTone(buzzerPin);
-  eventSoundEndedAt = millis();
   footstepPhase = 0;
   nextFootstepAt = millis();
 }
@@ -311,7 +295,7 @@ void updateGameSounds() {
   }
 
   // ===== FOOTSTEPS =====
-  if (walking && !micListening && (long)(now - nextFootstepAt) >= 0) {
+  if (walking && (long)(now - nextFootstepAt) >= 0) {
     if (footstepPhase == 0) {
       tone(buzzerPin, 170, 18);     // First little crunch
       nextFootstepAt = now + 22;
@@ -350,8 +334,8 @@ void sendWater(int value) {
   Serial.println("}");
 }
 
-void sendClap() {
-  Serial.println("{\"type\":\"clap\",\"value\":true}");
+void sendMotion() {
+  Serial.println("{\"type\":\"motion\",\"value\":true}");
 }
 
 void sendFan() {
@@ -504,7 +488,7 @@ void drawPlaying(unsigned long now) {
       case 'Z': centerText(row, "PAUSED"); break;
       case 'W': centerText(row, "STORM WARNING!"); break;
       case 'H': centerText(row, "!! HURRICANE !!"); break;
-      case 'C': centerText(row, "CROWS! CLAP NOW"); break;
+      case 'C': centerText(row, "CROWS! WAVE NOW"); break;
       default:  centerText(row, ""); break;
     }
     showRow(1, row);
@@ -607,14 +591,13 @@ bool handleStat(char* fields) {
   return true;
 }
 
-void setMicrophone(bool listening) {
-  if (micListening == listening) return;
-  micListening = listening;
-  soundArmed = false;
-  soundQuietSince = 0;
-  if (activeSound == NULL) noTone(buzzerPin);
-  Serial.print("{\"type\":\"mic\",\"value\":\"");
-  Serial.print(listening ? "on" : "off");
+void setMotionSensor(bool enabled) {
+  if (motionEnabled == enabled) return;
+  motionEnabled = enabled;
+  // A sensor already HIGH when enabled is not a new movement.
+  previousMotion = (digitalRead(motionPin) == HIGH);
+  Serial.print("{\"type\":\"motionEnabled\",\"value\":\"");
+  Serial.print(enabled ? "on" : "off");
   Serial.println("\"}");
 }
 
@@ -623,7 +606,7 @@ void stopAll() {
   stopSound();
   stopWalking();
   fanOff();
-  setMicrophone(false);
+  setMotionSensor(false);
 }
 
 void startHardwareTest(HardwareTest test) {
@@ -632,7 +615,7 @@ void startHardwareTest(HardwareTest test) {
   testStartedAt = millis();
   testDuration = test == TEST_FAN ? 3000 : 10000;
   if (test == TEST_FAN) fanOn();
-  if (test == TEST_MIC) setMicrophone(true);
+  if (test == TEST_MOTION) setMotionSensor(true);
 }
 
 void updateHardwareTest() {
@@ -703,13 +686,13 @@ void handleCommand(char* command) {
   else if (strcmp(command, "FAN_ON") == 0) fanOn();
   else if (strcmp(command, "FAN_OFF") == 0) fanOff();
 
-  // ----- Microphone -----
-  else if (strcmp(command, "MIC_ON") == 0) setMicrophone(true);
-  else if (strcmp(command, "MIC_OFF") == 0) setMicrophone(false);
+  // ----- Motion sensor -----
+  else if (strcmp(command, "MOTION_ON") == 0) setMotionSensor(true);
+  else if (strcmp(command, "MOTION_OFF") == 0) setMotionSensor(false);
 
   // ----- Connection -----
   else if (strcmp(command, "TEST_FAN") == 0) startHardwareTest(TEST_FAN);
-  else if (strcmp(command, "TEST_MIC") == 0) startHardwareTest(TEST_MIC);
+  else if (strcmp(command, "TEST_MOTION") == 0) startHardwareTest(TEST_MOTION);
   else if (strcmp(command, "TEST_LCD") == 0) startHardwareTest(TEST_LCD);
   else if (strcmp(command, "TEST_SIREN") == 0) playSound(hurricaneAlarm, SOUND_LENGTH(hurricaneAlarm));
   else if (strcmp(command, "PING") == 0) { /* Heartbeat during component tests. */ }
@@ -830,31 +813,18 @@ void readWaterSensor() {
 }
 
 // ==========================================
-// CLAP SENSOR - SCARE THE CROWS
+// MOTION SENSOR - SCARE THE CROWS
 // ==========================================
 
-void readSoundSensor() {
-  unsigned long now = millis();
-  int currentSound = digitalRead(soundPin);
-  bool buzzerEcho = activeSound != NULL || now - eventSoundEndedAt < buzzerEchoIgnore;
-  if (!micListening || buzzerEcho) {
-    soundArmed = false;
-    soundQuietSince = 0;
-    return;
+void readMotionSensor() {
+  // HC-SR501 is active HIGH; emit once per LOW-to-HIGH transition.
+  bool motion = (digitalRead(motionPin) == HIGH);
+  if (motionEnabled && motion && !previousMotion) {
+    sendMotion();
+    setMotionSensor(false);
+    if (hardwareTest == TEST_MOTION) hardwareTest = TEST_NONE;
   }
-  if (currentSound == soundIdleState) {
-    if (soundQuietSince == 0) soundQuietSince = now;
-    if (now - soundQuietSince >= 100 && now - lastClapTime >= clapCooldown) soundArmed = true;
-  } else {
-    if (soundArmed && now - lastClapTime >= clapCooldown) {
-      sendClap();
-      lastClapTime = now;
-      setMicrophone(false); // One event; the next crow visit re-enables listening.
-      if (hardwareTest == TEST_MIC) hardwareTest = TEST_NONE;
-    }
-    soundArmed = false;
-    soundQuietSince = 0;
-  }
+  previousMotion = motion;
 }
 
 // ==========================================
@@ -868,9 +838,9 @@ void setup() {
   pinMode(heatButton, INPUT_PULLUP);
   pinMode(coolButton, INPUT_PULLUP);
 
-  // Sound sensor: read its quiet level at startup (keep the room quiet).
-  pinMode(soundPin, INPUT);
-  soundIdleState = digitalRead(soundPin);
+  // Motion sensor: capture the initial level to avoid a false startup event.
+  pinMode(motionPin, INPUT);
+  previousMotion = (digitalRead(motionPin) == HIGH);
 
   // Passive buzzer
   pinMode(buzzerPin, OUTPUT);
@@ -911,7 +881,7 @@ void loop() {
   readLightSensor();
   readWaterSensor();
   readCommands();
-  readSoundSensor();
+  readMotionSensor();
   checkGameLink();
   updateHardwareTest();
   updateGameSounds();
