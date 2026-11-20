@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#78ac39"><title>The Last Harvest — grow your valley</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<main class="game-shell">
+  <canvas id="farm" tabindex="0" aria-label="Farm. Arrow keys to walk; E to plant, harvest, shelter, or open a store. Select a plot to walk there."></canvas>
+  <div id="world-actions" aria-label="Farm buildings and plots"></div>
+  <header class="masthead">
+    <div class="brand"><span aria-hidden="true"><svg class="farm-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="./icons.svg#wheat"></use></svg></span><div>The Last Harvest<small>GROW YOUR LITTLE CORNER OF THE WORLD</small></div></div>
+    <div class="session-bar">
+      <div class="stat"><span aria-hidden="true"><svg class="farm-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="./icons.svg#clock"></use></svg></span><div><small>Demo time</small><strong id="timer">04:00</strong></div></div>
+      <div class="stat"><span class="gold" aria-hidden="true"><svg class="farm-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="./icons.svg#coin"></use></svg></span><div><small>Your coins</small><strong id="coins">20</strong></div></div>
+      <div class="stat level-stat"><span aria-hidden="true"><svg class="farm-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="./icons.svg#level"></use></svg></span><div><small id="level-label">Level 1</small><strong id="xp-label">0 / 50 XP</strong><progress id="xp-meter" max="50" value="0" aria-label="Level progress"></progress></div></div>
+    </div>
+    <div class="header-actions"><button id="pause" class="quiet" disabled>Pause</button><button id="settings-open" class="quiet" aria-label="Open settings"><svg class="farm-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="./icons.svg#settings"></use></svg> <span>Settings</span></button><button id="fullscreen" class="quiet" aria-label="Enter fullscreen"><svg class="farm-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="./icons.svg#fullscreen"></use></svg></button></div>
+  </header>
+  <div class="weather-strip"><span id="day-label"><svg class="farm-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="./icons.svg#sun"></use></svg> Daylight</span><span id="weather-label"><svg class="farm-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="./icons.svg#sun"></use></svg> Clear skies</span><span id="temperature-label"><svg class="farm-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="./icons.svg#thermometer"></use></svg> 22°C</span><span id="soil-label">Soil 62%</span></div>
+  <aside class="next-objective"><small>YOUR NEXT STEP</small><span id="next-step">Harvest your first crop</span><button data-open="quests">View quests →</button></aside>
+  <aside class="storm-panel"><div><span aria-hidden="true"><svg class="farm-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="./icons.svg#storm"></use></svg></span><span id="storm-label">Hurricane approach</span><strong id="storm-value">0%</strong></div><progress id="storm-meter" max="100" value="0" aria-label="Hurricane approach"></progress></aside>
+  <div id="toast" class="toast" role="status"></div>
+  <button id="world-hint" class="world-hint">Arrow keys to walk · E to interact</button>
+  <section class="farm-dock" aria-label="Farm tools">
+    <aside id="ghost" class="ghost-companion" aria-label="Farmer Caren's advice" hidden>
+      <img class="ghost-portrait" src="caren.svg" alt="Farmer Caren, a smiling ghost in a straw hat and overalls" width="90" height="100">
+      <div id="ghost-bubble" class="ghost-bubble" hidden><div class="ghost-heading"><strong>Farmer Caren</strong><small id="ghost-source">Built-in tip</small><button id="ghost-dismiss" aria-label="Dismiss Caren's message">×</button></div><p id="ghost-words" role="status" aria-live="polite"></p></div>
+      <button id="ghost-ask" class="quiet">Any advice?</button>
+      <span id="ghost-alert" class="sr-only" role="alert"></span>
+    </aside>
+    <div id="weather-controls" class="weather-controls hidden">
+      <div class="weather-title"><b>Weather in your hands</b><small id="control-mode">Rehearsal controls mirror the kit.</small><button id="weather-close" class="quiet" aria-label="Close weather controls">×</button></div>
+      <div class="controls">
+        <div><label for="night-toggle">Day & night <kbd>N</kbd></label><button id="night-toggle" class="sensor-button" aria-pressed="false"><svg class="farm-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="./icons.svg#moon"></use></svg> Fast night</button><small id="time-help">Daylight · time ×1</small></div>
+        <div><label>Temperature <kbd>− / +</kbd></label><div class="temperature-buttons"><button id="temp-down" aria-label="Lower temperature">−</button><output id="temp-value">22°C</output><button id="temp-up" aria-label="Raise temperature">+</button></div><small>Match your crop’s preferred range</small></div>
+        <div><label for="rain">Rainfall <kbd>R</kbd></label><input id="rain" type="range" min="0" max="100" value="0"><small id="rain-help">Dry probe · no rain</small></div>
+        <div><label>Crow patrol <kbd>C</kbd></label><button id="clap" class="sensor-button">Scare crows</button><small id="crow-help">The fields are quiet.</small></div>
+      </div>
+    </div>
+    <div class="toolbar">
+      <nav class="menu-buttons" aria-label="Farm menus"><button data-open="quests"><span><svg class="farm-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="./icons.svg#quests"></use></svg></span>Quests<b id="quest-badge" hidden>0</b></button><button data-open="shop"><span><svg class="farm-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="./icons.svg#shop"></use></svg></span>Shop</button><button data-open="inventory"><span><svg class="farm-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="./icons.svg#inventory"></use></svg></span>Inventory</button><button id="weather-toggle" aria-expanded="false"><span><svg class="farm-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="./icons.svg#weather"></use></svg></span>Weather</button></nav>
+      <div class="crop-picker"><small>CHOOSE A SEED <span>· keys 1–5</span></small><div id="seeds" class="seeds"></div></div>
+      <button id="market-walk" class="market-button"><span><svg class="farm-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="./icons.svg#market"></use></svg></span><b>To market ↗</b><small id="basket-value">0 crops</small></button>
+    </div>
+    <footer><span><kbd>↑ ↓ ← →</kbd> Walk · <kbd>E</kbd> Interact <span class="desktop-tip">· click a plot to walk there</span></span><span id="hardware-status">● Keyboard rehearsal</span><span id="farm-size">4 / 24 plots</span></footer>
+  </section>
+</main>
+<div class="overlay" id="intro">
+  <section class="story-card farm-sign" role="dialog" aria-modal="true" aria-labelledby="intro-title" aria-describedby="intro-description">
+    <header class="sign-heading">
+      <span class="sign-bolt sign-bolt-left" aria-hidden="true"></span><span class="sign-bolt sign-bolt-right" aria-hidden="true"></span>
+      <svg class="farm-icon sign-wheat" viewBox="0 0 64 64" aria-hidden="true"><use href="./icons.svg#wheat"></use></svg>
+      <h1 id="intro-title">The Last Harvest</h1>
+      <svg class="farm-icon sign-wheat sign-wheat-right" viewBox="0 0 64 64" aria-hidden="true"><use href="./icons.svg#wheat"></use></svg>
+    </header>
+    <div class="sign-content">
+      <div class="intro-welcome">
+        <h2>Ready, set, grow!</h2>
+        <p id="intro-description">Plant seeds, harvest crops, earn coins, and build your dream farm—all before the big storm hits!</p>
+      </div>
+      <div class="intro-goal">
+        <h3>Your farming adventure starts small!</h3>
+        <p class="starting-inventory"><strong>Starting inventory:</strong><span>4 plots · Wheat &amp; Lettuce · 1 Open Market</span></p>
+        <p>Plant, harvest, and earn your way to a bigger farm! Buy more land, build windmills to power new shops, and level up to unlock exciting new markets and worlds!</p>
+      </div>
+      <div class="intro-controls" aria-label="Keyboard controls">
+        <span><kbd aria-label="Arrow keys">↑ ↓ ← →</kbd> Walk</span><span><kbd>E</kbd> Plant / harvest</span><span><kbd>N</kbd> Fast night</span><span><kbd>R</kbd> Rain</span><span><kbd>C</kbd> Scare crows</span>
+      </div>
+      <div class="intro-actions">
+        <button id="start" class="primary">Start growing</button>
+        <button id="intro-connect" class="quiet"><svg class="farm-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="./icons.svg#settings"></use></svg><span>Connect kit</span></button>
+      </div>
+      <p id="intro-kit-state" class="intro-kit-state" role="status">Play with your keyboard or connect your ELEGOO kit.</p>
+      <button id="intro-settings" class="text-button">Tune demo settings</button>
+      <small class="intro-foot">The 4:00 presentation timer starts when you enter the farm.</small>
+    </div>
+  </section>
+</div>
+<div class="overlay hidden" id="ending"><section class="story-card" role="dialog" aria-modal="true" aria-labelledby="ending-title"><span class="eyebrow">FOUR MINUTES OF GROWTH</span><h2 id="ending-title">Look what you grew.</h2><p id="ending-copy"></p><div id="ending-stats" class="ending-stats"></div><button id="play-again" class="primary">Grow a new farm ↻</button></section></div>
+<div class="overlay hidden" id="farm-menu"><section class="menu-card" role="dialog" aria-modal="true" aria-labelledby="menu-title"><header class="modal-heading"><div><span class="eyebrow" id="menu-kicker">YOUR FARM</span><h2 id="menu-title">Shop</h2></div><button id="menu-close" class="quiet">Close ×</button></header><p class="menu-note" id="menu-note"></p><div id="menu-content"></div><p id="menu-feedback" role="status"></p><footer class="menu-footer"><span id="menu-balance"></span><span id="menu-clock"></span></footer></section></div>
+<div class="overlay hidden" id="settings"><section class="menu-card" role="dialog" aria-modal="true" aria-labelledby="settings-title"><header class="modal-heading"><h2 id="settings-title">Farm settings</h2><button id="settings-close" class="quiet">Close ×</button></header><p>The farm and timer pause while settings are open.</p><div class="settings-actions"><button id="sound-toggle" class="quiet" aria-pressed="false">Sound off</button><button id="hardware-open" class="quiet">Connect kit</button><button id="restart" class="quiet">Restart demo ↻</button></div><label class="ghost-preference"><input id="ghost-auto" type="checkbox" checked> Caren’s automatic tips and ghostly jokes</label><p>Urgent farm alerts stay on. Written dialogue only.</p><h3>Demo balance</h3><p id="settings-help">Set these before starting a new farm. The timer stays at four minutes.</p><form id="balance-form"><div class="settings-grid"><label>Starting coins<input name="startingCoins" type="number" min="0" max="1000" step="1"></label><label>Starting seeds per basic crop<input name="startingSeeds" type="number" min="1" max="100" step="1"></label><label>First extra plot · coins<input name="plotPrice" type="number" min="1" max="500" step="1"></label><label>Windmill · coins<input name="windmillPrice" type="number" min="1" max="500" step="1"></label><label>Bakery · coins<input name="bakeryPrice" type="number" min="1" max="500" step="1"></label><label>Shelter · coins<input name="shelterPrice" type="number" min="1" max="100" step="1"></label><label>Bakery · wheat<input name="bakeryWheat" type="number" min="1" max="30" step="1"></label></div><button id="balance-save" class="primary" type="submit">Apply to this new farm</button></form><p id="settings-feedback" role="status"></p><details><summary>Weather station outputs</summary><p><span id="fan-icon"><svg class="farm-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="./icons.svg#fan"></use></svg></span> <span id="fan-state">Fan idle</span> · <span id="buzzer-state">Buzzer quiet</span></p><p>Boat: level 30. More land: level 60. These are future expansion previews.</p></details></section></div>
+  <div class="overlay hidden" id="hardware-modal">
+    <section class="hardware-card" role="dialog" aria-modal="true" aria-labelledby="hardware-title">
+      <div class="modal-heading"><h2 id="hardware-title">Connect your ELEGOO kit</h2><button id="hardware-close" class="quiet">Close</button></div>
+      <p>Use desktop Chrome or Edge. Upload the sketch, close Arduino Serial Monitor, then choose its USB port. The game pauses while this panel is open.</p>
+      <label for="hardware-profile">Sketch on your board</label>
+      <select id="hardware-profile"><option value="team">Team V4 · 9600 baud</option><option value="original">Original bridge · 115200 baud</option></select>
+      <p id="profile-description"></p>
+      <p class="hardware-message" id="hardware-message" role="status">Keyboard rehearsal is available with or without a kit.</p>
+      <div class="hardware-actions"><button id="connect" class="primary">Choose USB port</button><button id="disconnect" class="quiet" disabled>Disconnect</button></div>
+      <h3>Test each new component</h3>
+      <p>Upload the V4 sketch below first. Tests keep the farm paused and stop automatically. In play, crows enable clap detection and hurricane warnings start the fan.</p>
+      <div class="hardware-actions"><button data-kit-test="fan" class="quiet" disabled>Test fan · 3s</button><button data-kit-test="mic" class="quiet" disabled>Test clap · 10s</button><button data-kit-test="lcd" class="quiet" disabled>Test LCD · 10s</button><button id="stop-kit-test" class="quiet" disabled>Stop tests</button></div>
+      <label for="test-sound">Speaker sound</label><select id="test-sound" disabled></select><button id="test-bell" class="quiet" disabled>Play selected sound</button>
+      <h3>Calibrate the physical sensors</h3>
+      <p id="light-calibration-help"></p>
+      <p>Keep the water probe’s connector and electronics dry.</p>
+      <div class="calibration-grid"><button data-calibrate="bright">Capture uncovered light</button><button data-calibrate="dark">Capture covered light</button><button data-calibrate="dry">Capture dry probe</button><button data-calibrate="wet">Capture deep probe</button></div>
+      <output id="raw-values">Waiting for sensor readings.</output>
+      <p id="calibration-status">Capture your water endpoints before play.</p>
+      <details><summary>Connection details</summary><output id="connection-details">No controller connected.</output></details>
+      <details><summary>Sketch downloads and USB messages</summary>
+        <p>Team V4 sends temperature, day/night, water, clap events, and fan/microphone status at 9600 baud.</p>
+        <code>{"type":"temperature","value":24}<br>{"type":"dayNight","value":"night"}<br>{"type":"water","value":300}</code>
+        <p>The game sends LCD status, crow listening, fan, movement, and sound commands automatically. STOP_ALL stops outputs on pause or disconnect. A four-second connection timeout also stops the hardware.</p>
+        <p><a href="hardware/The_Last_Harvest/The_Last_Harvest.ino" download>Download Team V4 sketch</a> · <a href="hardware/README.md" download>Wiring and setup guide</a></p>
+        <p>The original bridge remains available for the earlier wiring and combined JSON protocol.</p>
+        <p><a href="hardware/last_harvest/last_harvest.ino" download>Download original bridge</a></p>
+      </details>
+    </section>
+  </div>
+<script type="module" src="game.mjs"></script></body></html>
